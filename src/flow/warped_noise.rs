@@ -69,6 +69,61 @@ impl LatentNoiseTensor {
             + (1.0 - dx) * dy * s01
             + dx * dy * s11
     }
+
+    /// Mean of all latent elements
+    pub fn mean(&self) -> f32 {
+        if self.data.is_empty() {
+            return 0.0;
+        }
+        self.data.iter().sum::<f32>() / self.data.len() as f32
+    }
+
+    /// Sample variance of all latent elements
+    pub fn variance(&self) -> f32 {
+        if self.data.len() < 2 {
+            return 0.0;
+        }
+        let m = self.mean();
+        let sum_sq: f32 = self.data.iter().map(|&x| (x - m) * (x - m)).sum();
+        sum_sq / self.data.len() as f32
+    }
+
+    /// Serialize tensor data as little-endian `f32` bytes
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(self.data.len() * 4);
+        for &val in &self.data {
+            bytes.extend_from_slice(&val.to_le_bytes());
+        }
+        bytes
+    }
+
+    /// Deserialize tensor data from little-endian `f32` bytes
+    pub fn from_bytes(
+        bytes: &[u8],
+        channels: usize,
+        height: usize,
+        width: usize,
+    ) -> anyhow::Result<Self> {
+        let expected_len = channels * height * width * 4;
+        if bytes.len() != expected_len {
+            anyhow::bail!(
+                "LatentNoiseTensor byte buffer mismatch: got {}, expected {}",
+                bytes.len(),
+                expected_len
+            );
+        }
+        let mut data = Vec::with_capacity(channels * height * width);
+        for i in 0..(channels * height * width) {
+            let off = i * 4;
+            data.push(f32::from_le_bytes(bytes[off..off + 4].try_into().unwrap()));
+        }
+        Ok(Self {
+            channels,
+            height,
+            width,
+            data,
+        })
+    }
 }
 
 pub struct WarpedNoiseEngine;
@@ -103,6 +158,15 @@ impl WarpedNoiseEngine {
         warped
     }
 
+    /// Warps a latent noise tensor backward along an optical flow field:
+    /// z_{t-1}(x, y) = sample(z_t, x + u(x, y), y + v(x, y))
+    pub fn warp_noise_backward(
+        next_latent: &LatentNoiseTensor,
+        flow: &OpticalFlowField,
+    ) -> LatentNoiseTensor {
+        Self::warp_noise(next_latent, &flow.invert())
+    }
+
     /// Blends warped noise with fresh Gaussian noise using degradation factor lambda (default 0.3):
     /// z_final = sqrt(1 - lambda^2) * z_warped + lambda * z_fresh
     pub fn blend_with_degradation(
@@ -114,16 +178,51 @@ impl WarpedNoiseEngine {
         let weight_warped = (1.0 - lambda * lambda).max(0.0).sqrt();
 
         let mut out = warped.clone();
-        for ((o, &w), &f) in out
-            .data
-            .iter_mut()
-            .zip(warped.data.iter())
-            .zip(fresh.data.iter())
-        {
-            *o = weight_warped * w + lambda * f;
+        for i in 0..out.data.len() {
+            out.data[i] = weight_warped * warped.data[i] + lambda * fresh.data[i];
         }
 
         out
+    }
+
+    /// Generates a full multi-frame sequence of temporally consistent Pass 2 latent noise tensors.
+    /// At each step `t`, with probability `warp_probability`, advects `z_{t-1}` along `flows[t-1]`
+    /// and blends with fresh Gaussian noise using variance-preserving `degradation` ($\lambda$);
+    /// otherwise injects fresh Gaussian noise.
+    pub fn warp_sequence(
+        initial_latent: &LatentNoiseTensor,
+        flows: &[OpticalFlowField],
+        degradation: f32,
+        warp_probability: f32,
+        seed: u64,
+    ) -> Vec<LatentNoiseTensor> {
+        use rand::{Rng, SeedableRng};
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+        let prob = warp_probability.clamp(0.0, 1.0);
+
+        let mut sequence = Vec::with_capacity(flows.len() + 1);
+        sequence.push(initial_latent.clone());
+
+        for (step, flow) in flows.iter().enumerate() {
+            let fresh = LatentNoiseTensor::new_gaussian(
+                initial_latent.channels,
+                initial_latent.height,
+                initial_latent.width,
+                Some(seed.wrapping_add(step as u64 + 1)),
+            );
+
+            let roll: f32 = rng.gen();
+            let next_tensor = if roll <= prob {
+                let prev = sequence.last().unwrap();
+                let warped = Self::warp_noise(prev, flow);
+                Self::blend_with_degradation(&warped, &fresh, degradation)
+            } else {
+                fresh
+            };
+            sequence.push(next_tensor);
+        }
+
+        sequence
     }
 
     /// Emits the WGPU WGSL compute shader for subpixel bilinear latent noise advection
@@ -203,5 +302,22 @@ mod tests {
 
         let blended = WarpedNoiseEngine::blend_with_degradation(&t1, &t2, 0.3);
         assert_eq!(blended.data.len(), 16);
+    }
+
+    #[test]
+    fn test_warp_sequence_and_bytes_roundtrip() {
+        let init = LatentNoiseTensor::new_gaussian(4, 16, 16, Some(77));
+        assert!((init.mean()).abs() < 0.25);
+        assert!((init.variance() - 1.0).abs() < 0.25);
+
+        let bytes = init.to_bytes();
+        let restored = LatentNoiseTensor::from_bytes(&bytes, 4, 16, 16).unwrap();
+        assert_eq!(restored.data, init.data);
+
+        let flows = vec![OpticalFlowField::new(16, 16), OpticalFlowField::new(16, 16)];
+        let seq = WarpedNoiseEngine::warp_sequence(&init, &flows, 0.3, 1.0, 99);
+        assert_eq!(seq.len(), 3);
+        // Variance should stay near 1.0 across variance-preserving degradation steps
+        assert!((seq[2].variance() - 1.0).abs() < 0.25);
     }
 }

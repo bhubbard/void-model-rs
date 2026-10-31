@@ -15,8 +15,10 @@ pub use mask::{
     AFFECTED_OBJECT, BACKGROUND, OVERLAP, PRIMARY_OBJECT,
 };
 pub use physics::{PhysicsConfig, PhysicsDynamics, PhysicsScenario, TrajectoryPoint};
-pub use pipeline::{InpaintConfig, InpaintPipeline, TwoPassReport};
+pub use pipeline::{
+    InpaintConfig, InpaintPipeline, SafetensorsHeader, TensorMeta, TwoPassReport, TwoPassResult,
+};
 pub use vlm::{
-    ContactRelation, InteractionType, SceneEntity, SceneInteractionGraph, VlmObjectAnalysis,
-    VlmReasoner, VlmSceneAnalysis,
+    ContactRelation, ContactRelationType, InteractionType, SceneEntity, SceneInteractionGraph,
+    VlmObjectAnalysis, VlmReasoner, VlmSceneAnalysis,
 };

@@ -1,3 +1,5 @@
 pub mod inpaint;
 
-pub use inpaint::{InpaintConfig, InpaintPipeline, TwoPassReport};
+pub use inpaint::{
+    InpaintConfig, InpaintPipeline, SafetensorsHeader, TensorMeta, TwoPassReport, TwoPassResult,
+};

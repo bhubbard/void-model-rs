@@ -94,6 +94,22 @@ Respond strictly with a JSON object adhering to this schema:
 
             if obj.will_move {
                 graph.add_contact(&analysis.primary_object, &obj.name, "supporting");
+            } else {
+                match int_type {
+                    InteractionType::PhysicalDeformation => {
+                        graph.add_contact(&analysis.primary_object, &obj.name, "pressing_on");
+                    }
+                    InteractionType::IntegralBelonging => {
+                        graph.add_contact(&analysis.primary_object, &obj.name, "attached_to");
+                    }
+                    InteractionType::SecondaryShadow => {
+                        graph.add_contact(&analysis.primary_object, &obj.name, "shadow_caster");
+                    }
+                    InteractionType::SecondaryReflection => {
+                        graph.add_contact(&analysis.primary_object, &obj.name, "reflected_by");
+                    }
+                    _ => {}
+                }
             }
 
             graph.add_entity(entity);

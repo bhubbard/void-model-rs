@@ -1,10 +1,13 @@
 use std::path::Path;
 use void_model::{
     flow::{LatentNoiseTensor, OpticalFlowField, WarpedNoiseEngine},
-    mask::{QuadMaskFrame, AFFECTED_OBJECT, BACKGROUND, OVERLAP, PRIMARY_OBJECT},
+    mask::{
+        BoundingBox, PointPrompt, QuadMaskFrame, VideoAnnotationConfig, AFFECTED_OBJECT,
+        BACKGROUND, OVERLAP, PRIMARY_OBJECT,
+    },
     physics::{PhysicsConfig, PhysicsDynamics, PhysicsScenario},
-    pipeline::InpaintPipeline,
-    vlm::VlmReasoner,
+    pipeline::{InpaintConfig, InpaintPipeline, SafetensorsHeader, TensorMeta},
+    vlm::{ContactRelationType, InteractionType, SceneEntity, SceneInteractionGraph, VlmReasoner},
 };
 
 #[test]
@@ -202,24 +205,211 @@ fn test_upstream_inpaint_pipeline_grid() {
 }
 
 #[test]
-fn test_upstream_quadmask_dilation_and_wgpu_shader() {
-    let mut frame = QuadMaskFrame::new(5, 5, BACKGROUND);
-    frame.set_pixel(2, 2, PRIMARY_OBJECT);
-    let dilated = frame.dilate(1);
-    assert_eq!(dilated.stats().primary_pixels, 9);
+fn test_upstream_quadmask_morphology_and_feathering() {
+    let mut frame = QuadMaskFrame::new(9, 9, BACKGROUND);
+    frame.set_pixel(4, 4, PRIMARY_OBJECT);
 
-    let wgsl = WarpedNoiseEngine::wgsl_warp_shader();
-    assert!(wgsl.contains("@compute @workgroup_size(8, 8, 1)"));
-    assert!(wgsl.contains("flow_uv"));
+    let dilated = frame.dilate(2);
+    // 5x5 region around (4, 4) becomes PRIMARY_OBJECT -> 25 pixels
+    assert_eq!(dilated.stats().primary_pixels, 25);
+
+    let eroded = dilated.erode(2);
+    assert_eq!(eroded.stats().primary_pixels, 1);
+    assert_eq!(eroded.get_pixel(4, 4), PRIMARY_OBJECT);
+
+    let alpha = dilated.gaussian_feather(1.5);
+    assert_eq!(alpha.len(), 81);
+    assert!(alpha[4 * 9 + 4] > 0.75);
+    assert!(alpha[4 * 9 + 4] > alpha[4 * 9 + 1]);
+    assert!(alpha[0] < 0.05);
 }
 
 #[test]
-fn test_upstream_two_pass_and_safetensors_header() {
-    let cfg = void_model::InpaintConfig::default();
-    let mut mask = QuadMaskFrame::new(720, 480, BACKGROUND);
-    mask.set_pixel(10, 10, PRIMARY_OBJECT);
-    let flow = OpticalFlowField::new(720, 480);
-    let report = InpaintPipeline::execute_two_pass(&cfg, &mask, &flow);
+fn test_upstream_quadmask_combine_with_overlap_and_annotation_box() {
+    let cfg = VideoAnnotationConfig {
+        video_path: "input.mp4".to_string(),
+        output_dir: "masks".to_string(),
+        primary_points: vec![PointPrompt::positive(2.0, 2.0, 0)],
+        boxes: vec![BoundingBox::new(1.0, 1.0, 2.0, 2.0)],
+    };
+    let primary_mask = cfg.rasterize_box_mask(4, 4);
+    let affected_mask = vec![255u8; 16];
+    let mut overlap_mask = vec![255u8; 16];
+    overlap_mask[0] = 0; // force pixel 0 into OVERLAP
+
+    let combined = QuadMaskFrame::combine_with_overlap(
+        &primary_mask,
+        &affected_mask,
+        Some(&overlap_mask),
+        4,
+        4,
+    )
+    .unwrap();
+    assert_eq!(combined.get_pixel(0, 0), OVERLAP);
+    assert_eq!(combined.get_pixel(1, 1), PRIMARY_OBJECT);
+    assert_eq!(combined.get_pixel(3, 3), BACKGROUND);
+}
+
+#[test]
+fn test_upstream_optical_flow_estimation_and_sequence_warping() {
+    let w = 16;
+    let h = 16;
+    let mut f0 = vec![20u8; w * h];
+    let mut f1 = vec![20u8; w * h];
+
+    // 4x4 textured block translated by (+1, +2) from (4, 4) to (5, 6)
+    for dy in 0..4 {
+        for dx in 0..4 {
+            let val = (120 + dx * 20 + dy * 15) as u8;
+            f0[(4 + dy) * w + (4 + dx)] = val;
+            f1[(6 + dy) * w + (5 + dx)] = val;
+        }
+    }
+
+    let flow_bm = OpticalFlowField::estimate_block_matching(&f0, &f1, w, h, 2, 3).unwrap();
+    let v_bm = flow_bm.get(6, 7);
+    assert_eq!(v_bm.u, 1.0);
+    assert_eq!(v_bm.v, 2.0);
+
+    let flow_lk = OpticalFlowField::estimate_lucas_kanade(&f0, &f1, w, h, 2).unwrap();
+    assert!(flow_lk.max_magnitude() > 0.0);
+
+    // Multi-frame sequence warping with probability=1.0 and backward warping check
+    let init = LatentNoiseTensor::new_gaussian(2, w, h, Some(55));
+    let seq = WarpedNoiseEngine::warp_sequence(&init, std::slice::from_ref(&flow_bm), 0.3, 1.0, 55);
+    assert_eq!(seq.len(), 2);
+
+    let back = WarpedNoiseEngine::warp_noise_backward(&seq[1], &flow_bm);
+    assert_eq!(back.data.len(), init.data.len());
+}
+
+#[test]
+fn test_upstream_vlm_transitive_support_and_rebound_queries() {
+    let mut graph = SceneInteractionGraph::default();
+    graph.add_entity(SceneEntity::new_primary("actor"));
+    graph.add_entity(SceneEntity::new_affected(
+        "hat",
+        InteractionType::IntegralBelonging,
+        false,
+        false,
+    ));
+    graph.add_entity(SceneEntity::new_affected(
+        "shadow",
+        InteractionType::SecondaryShadow,
+        false,
+        false,
+    ));
+    graph.add_entity(SceneEntity::new_affected(
+        "mattress",
+        InteractionType::PhysicalDeformation,
+        false,
+        false,
+    ));
+    graph.add_entity(SceneEntity::new_affected(
+        "tray",
+        InteractionType::SupportRemoval,
+        true,
+        true,
+    ));
+    graph.add_entity(SceneEntity::new_affected(
+        "glass",
+        InteractionType::SupportRemoval,
+        true,
+        true,
+    ));
+
+    graph.add_contact("actor", "tray", "holding");
+    graph.add_contact("tray", "glass", "supporting");
+    graph.add_contact("actor", "mattress", "pressing_on");
+
+    assert_eq!(
+        graph.contacts[2].relation_type(),
+        ContactRelationType::PressingOn
+    );
+    assert_eq!(
+        graph.find_unsupported_objects("actor"),
+        vec!["tray".to_string(), "glass".to_string()]
+    );
+    assert_eq!(
+        graph.find_elastic_rebound_objects("actor"),
+        vec!["mattress".to_string()]
+    );
+    assert_eq!(
+        graph.find_immediate_removal_objects("actor"),
+        vec!["actor".to_string(), "hat".to_string(), "shadow".to_string()]
+    );
+}
+
+#[test]
+fn test_upstream_physics_ground_collision_and_mask_trajectory_warp() {
+    let pts = PhysicsDynamics::simulate_free_fall_with_collision(
+        10.0, 5.0, 2.0, 0.0, 980.0, 15.0, 0.4, 0.02, 30.0, 20,
+    );
+    assert_eq!(pts.len(), 20);
+    assert!(pts.iter().all(|p| p.y <= 15.0 + 1e-6));
+
+    let mut mask = QuadMaskFrame::new(32, 32, BACKGROUND);
+    mask.set_pixel(10, 5, AFFECTED_OBJECT);
+    let video = PhysicsDynamics::warp_mask_along_trajectory(&mask, &pts);
+    assert_eq!(video.frame_count(), 20);
+    assert_eq!(video.frames[0].stats().affected_pixels, 1);
+}
+
+#[test]
+fn test_upstream_two_pass_inpainting_and_safetensors_checkpoint() {
+    let mut header = SafetensorsHeader::default();
+    header.tensors.insert(
+        "cogvideox.inpaint.conv_in.weight".to_string(),
+        TensorMeta {
+            dtype: "F16".to_string(),
+            shape: vec![32, 16, 3, 3],
+            data_offsets: [0, 9216],
+        },
+    );
+    let raw = header.to_header_bytes().unwrap();
+    let decoded = SafetensorsHeader::parse_bytes(&raw).unwrap();
+    assert_eq!(
+        decoded.tensors["cogvideox.inpaint.conv_in.weight"].element_count(),
+        32 * 16 * 9
+    );
+
+    let w = 16;
+    let h = 16;
+    let mut f0 = vec![180u8; w * h];
+    let mut f1 = vec![180u8; w * h];
+    let mut m0 = QuadMaskFrame::new(w, h, BACKGROUND);
+    let mut m1 = QuadMaskFrame::new(w, h, BACKGROUND);
+    for y in 5..9 {
+        for x in 5..9 {
+            f0[y * w + x] = 0;
+            f1[y * w + x] = 0;
+            m0.set_pixel(x, y, PRIMARY_OBJECT);
+            m1.set_pixel(x, y, PRIMARY_OBJECT);
+        }
+    }
+
+    let cfg = InpaintConfig {
+        width: w,
+        height: h,
+        frames: 2,
+        steps: 12,
+        ..Default::default()
+    };
+    let out = InpaintPipeline::run_two_pass(&[f0, f1], &[m0, m1], &cfg).unwrap();
+    assert_eq!(out.pass2_frames.len(), 2);
+    assert_eq!(out.pass2_frames[0][0], 180);
+    assert!(out.pass2_frames[0][6 * w + 6] > 150);
+
+    // Also verify WGPU WGSL shader emission and TwoPassReport telemetry
+    let wgsl = WarpedNoiseEngine::wgsl_warp_shader();
+    assert!(wgsl.contains("@compute @workgroup_size(8, 8, 1)"));
+    assert!(wgsl.contains("flow_uv"));
+
+    let full_cfg = InpaintConfig::default();
+    let mut full_mask = QuadMaskFrame::new(720, 480, BACKGROUND);
+    full_mask.set_pixel(10, 10, PRIMARY_OBJECT);
+    let full_flow = OpticalFlowField::new(720, 480);
+    let report = InpaintPipeline::execute_two_pass(&full_cfg, &full_mask, &full_flow);
     assert_eq!(report.latent_channels, 16);
     assert_eq!(report.latent_width, 90);
     assert_eq!(report.latent_height, 60);
