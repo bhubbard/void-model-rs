@@ -1,0 +1,1541 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>void-model-rs — Netflix VOID Video Object &amp; Interaction Deletion in Pure Rust</title>
+  <meta name="description" content="High-performance, pure Rust port of Netflix & INSAIT's VOID (Video Object and Interaction Deletion). Interactive QuadMask truth-table studio, VLM causal interaction graph, Pass 2 flow-warped latent noise engine, and counterfactual scene physics." />
+  <link rel="canonical" href="https://code.brandonhubbard.com/void-model-rs/" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root, [data-theme="dark"] {
+      --bg-void: #0a0a0a;
+      --bg-surface: #111111;
+      --bg-elevated: #171717;
+      --bg-panel: #0e0e0e;
+      --text-primary: #fafafa;
+      --text-secondary: #a3a3a3;
+      --text-muted: #737373;
+      --border-grid: #262626;
+      --border-strong: #404040;
+      --accent-blue: #2563eb;
+      --accent-sky: #38bdf8;
+      --accent-emerald: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-rose: #f43f5e;
+      --accent-purple: #a855f7;
+      --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    [data-theme="light"] {
+      --bg-void: #fafafa;
+      --bg-surface: #ffffff;
+      --bg-elevated: #f5f5f5;
+      --bg-panel: #f0f0f0;
+      --text-primary: #0a0a0a;
+      --text-secondary: #525252;
+      --text-muted: #737373;
+      --border-grid: #e5e5e5;
+      --border-strong: #d4d4d4;
+      --accent-blue: #1d4ed8;
+      --accent-sky: #0284c7;
+      --accent-emerald: #059669;
+      --accent-amber: #d97706;
+      --accent-rose: #e11d48;
+      --accent-purple: #7e22ce;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      border-radius: 0 !important;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      background: var(--bg-void);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+    }
+
+    body {
+      background: var(--bg-void);
+      color: var(--text-primary);
+      line-height: 1.5;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    /* Unified Brandon Hubbard Header */
+    .bh-global-header {
+      border-bottom: 1px solid var(--border-grid);
+      background: var(--bg-void);
+      position: relative;
+      z-index: 100;
+    }
+    .bh-global-inner {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 0 24px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-left: 1px solid var(--border-grid);
+      border-right: 1px solid var(--border-grid);
+    }
+    .bh-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .bh-brand-dot {
+      width: 10px;
+      height: 10px;
+      background: var(--accent-rose);
+      display: inline-block;
+    }
+    .bh-global-links {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .bh-global-links a:hover {
+      color: var(--text-primary);
+    }
+    .theme-btn {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      border: 1px solid var(--border-grid);
+      padding: 6px 12px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      cursor: pointer;
+      text-transform: uppercase;
+    }
+    .theme-btn:hover {
+      border-color: var(--accent-sky);
+    }
+
+    /* Sticky Subnav */
+    .bh-subnav {
+      position: sticky;
+      top: 0;
+      z-index: 95;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-grid);
+    }
+    .bh-subnav-inner {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 0 24px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-left: 1px solid var(--border-grid);
+      border-right: 1px solid var(--border-grid);
+      overflow-x: auto;
+    }
+    .subnav-repo {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+    .subnav-badge {
+      background: var(--accent-rose);
+      color: #fff;
+      font-size: 10px;
+      padding: 2px 6px;
+      font-weight: 700;
+    }
+    .subnav-anchors {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
+    .subnav-anchors a:hover {
+      color: var(--accent-sky);
+    }
+
+    /* Main Container */
+    .container {
+      max-width: 1440px;
+      margin: 0 auto;
+      border-left: 1px solid var(--border-grid);
+      border-right: 1px solid var(--border-grid);
+    }
+
+    /* Hero Section */
+    .hero {
+      display: grid;
+      grid-template-columns: 7fr 5fr;
+      border-bottom: 1px solid var(--border-grid);
+    }
+    @media (max-width: 1024px) {
+      .hero {
+        grid-template-columns: 1fr;
+      }
+    }
+    .hero-main {
+      padding: 48px 36px;
+      border-right: 1px solid var(--border-grid);
+    }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--accent-rose);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .hero-title {
+      font-size: clamp(2.1rem, 4vw, 3.4rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.06;
+      margin-bottom: 18px;
+    }
+    .hero-subtitle {
+      font-size: 16px;
+      color: var(--text-secondary);
+      max-width: 68ch;
+      margin-bottom: 28px;
+    }
+    .cta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .btn-primary {
+      background: var(--text-primary);
+      color: var(--bg-void);
+      padding: 12px 22px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border: 1px solid var(--text-primary);
+      cursor: pointer;
+    }
+    .btn-primary:hover {
+      background: var(--accent-rose);
+      color: #fff;
+      border-color: var(--accent-rose);
+    }
+    .btn-secondary {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      padding: 12px 20px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      border: 1px solid var(--border-strong);
+      cursor: pointer;
+    }
+    .btn-secondary:hover {
+      border-color: var(--accent-sky);
+      color: var(--accent-sky);
+    }
+
+    .hero-kpis {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+    }
+    .kpi-cell {
+      padding: 28px 24px;
+      border-bottom: 1px solid var(--border-grid);
+      border-right: 1px solid var(--border-grid);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      background: var(--bg-surface);
+    }
+    .kpi-cell:nth-child(2n) {
+      border-right: none;
+    }
+    .kpi-cell:nth-child(n+3) {
+      border-bottom: none;
+    }
+    .kpi-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      letter-spacing: 0.06em;
+    }
+    .kpi-val {
+      font-family: var(--font-mono);
+      font-size: 34px;
+      font-weight: 800;
+      color: var(--text-primary);
+      margin: 8px 0 4px;
+    }
+    .kpi-sub {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--accent-emerald);
+    }
+
+    /* Section Header */
+    .section-bar {
+      padding: 18px 36px;
+      border-bottom: 1px solid var(--border-grid);
+      background: var(--bg-elevated);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .section-bar h2 {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .section-tag {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    /* Studio Workbench Layout */
+    .studio-grid {
+      display: grid;
+      grid-template-columns: 330px 1fr 360px;
+      border-bottom: 1px solid var(--border-grid);
+    }
+    @media (max-width: 1220px) {
+      .studio-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .studio-sidebar {
+      border-right: 1px solid var(--border-grid);
+      background: var(--bg-surface);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .studio-center {
+      background: var(--bg-panel);
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border-grid);
+    }
+    .studio-right {
+      background: var(--bg-surface);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .panel-title {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-secondary);
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border-grid);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .scenario-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .scenario-btn {
+      text-align: left;
+      padding: 10px 12px;
+      background: var(--bg-void);
+      border: 1px solid var(--border-grid);
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .scenario-btn:hover {
+      border-color: var(--border-strong);
+    }
+    .scenario-btn.active {
+      border-color: var(--accent-rose);
+      background: var(--bg-elevated);
+    }
+    .scenario-btn-title {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 700;
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 3px;
+    }
+    .scenario-btn-desc {
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .control-label {
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+    .control-val {
+      color: var(--accent-sky);
+      font-weight: 700;
+    }
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent-rose);
+      cursor: pointer;
+    }
+
+    /* Viewport Toolbar */
+    .viewport-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border-grid);
+      background: var(--bg-surface);
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .mode-tabs {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    .mode-tab {
+      background: var(--bg-void);
+      color: var(--text-secondary);
+      border: 1px solid var(--border-grid);
+      padding: 6px 10px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      cursor: pointer;
+      text-transform: uppercase;
+    }
+    .mode-tab.active {
+      background: var(--accent-rose);
+      color: #fff;
+      border-color: var(--accent-rose);
+      font-weight: 700;
+    }
+
+    .canvas-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 10;
+      background: #050505;
+      border-bottom: 1px solid var(--border-grid);
+      overflow: hidden;
+      cursor: ew-resize;
+    }
+    #voidCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* Transport Scrubber Bar */
+    .transport-bar {
+      padding: 12px 16px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-grid);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .play-btn {
+      background: var(--accent-rose);
+      color: #fff;
+      border: none;
+      padding: 6px 14px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      min-width: 78px;
+    }
+    .frame-readout {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-secondary);
+      min-width: 120px;
+    }
+
+    /* QuadMask Truth Table Legend */
+    .quadmask-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+    }
+    .qm-cell {
+      padding: 12px 14px;
+      border-right: 1px solid var(--border-grid);
+      background: var(--bg-void);
+    }
+    .qm-cell:last-child {
+      border-right: none;
+    }
+    .qm-head {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+    }
+    .qm-swatch {
+      width: 10px;
+      height: 10px;
+      display: inline-block;
+      border: 1px solid var(--border-strong);
+    }
+    .qm-val {
+      font-family: var(--font-mono);
+      font-size: 16px;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+
+    /* Right column telemetry & physics oscilloscope */
+    .osc-wrap {
+      width: 100%;
+      height: 145px;
+      background: #060606;
+      border: 1px solid var(--border-grid);
+    }
+    #physicsCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .vlm-graph-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .vlm-node {
+      padding: 8px 10px;
+      background: var(--bg-void);
+      border: 1px solid var(--border-grid);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+    .vlm-node-top {
+      display: flex;
+      justify-content: space-between;
+      font-weight: 700;
+      margin-bottom: 3px;
+    }
+    .vlm-tag {
+      font-size: 10px;
+      padding: 1px 5px;
+      border: 1px solid currentColor;
+    }
+
+    /* Benchmarks & Architecture Grid */
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border-bottom: 1px solid var(--border-grid);
+    }
+    @media (max-width: 980px) {
+      .two-col {
+        grid-template-columns: 1fr;
+      }
+    }
+    .col-pane {
+      padding: 32px 36px;
+      border-right: 1px solid var(--border-grid);
+    }
+    .col-pane:last-child {
+      border-right: none;
+    }
+
+    table.swiss-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+    table.swiss-table th,
+    table.swiss-table td {
+      padding: 10px 12px;
+      border: 1px solid var(--border-grid);
+      text-align: left;
+    }
+    table.swiss-table th {
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      font-size: 11px;
+    }
+    .speedup-pill {
+      color: var(--accent-emerald);
+      font-weight: 700;
+    }
+
+    pre.code-box {
+      background: #070707;
+      color: #e5e5e5;
+      border: 1px solid var(--border-grid);
+      padding: 16px;
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      overflow-x: auto;
+      line-height: 1.55;
+    }
+
+    footer.bh-footer {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 28px 36px;
+      border-left: 1px solid var(--border-grid);
+      border-right: 1px solid var(--border-grid);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Unified Brandon Hubbard Header -->
+  <header class="bh-global-header">
+    <div class="bh-global-inner">
+      <a href="https://code.brandonhubbard.com/" class="bh-brand">
+        <span class="bh-brand-dot"></span>
+        <span>BRANDON HUBBARD // ENGINEERING PORTAL</span>
+      </a>
+      <div class="bh-global-links">
+        <a href="https://brandonhubbard.com/">Home</a>
+        <a href="https://code.brandonhubbard.com/">Directory (134)</a>
+        <a href="https://github.com/bhubbard/void-model-rs" target="_blank" rel="noopener">GitHub ↗</a>
+        <button class="theme-btn" id="themeToggle" type="button">THEME: DARK</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Sticky Repository Subnav -->
+  <nav class="bh-subnav">
+    <div class="bh-subnav-inner">
+      <div class="subnav-repo">
+        <span>bhubbard / void-model-rs</span>
+        <span class="subnav-badge">RUST 2021 // ECCV 2026</span>
+      </div>
+      <div class="subnav-anchors">
+        <a href="#studio">01. Counterfactual Studio</a>
+        <a href="#quadmask-spec">02. QuadMask Truth-Table</a>
+        <a href="#benchmarks">03. Empirical Benchmarks (44.6x)</a>
+        <a href="#wgsl-shader">04. WGPU Latent Warping</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container">
+    <!-- Hero -->
+    <section class="hero">
+      <div class="hero-main">
+        <div class="eyebrow">
+          <span>NETFLIX &amp; INSAIT VOID ARCHITECTURE</span>
+          <span>•</span>
+          <span>COUNTERFACTUAL VIDEO INPAINTING</span>
+        </div>
+        <h1 class="hero-title">Physics-Aware Video Object &amp; Interaction Deletion in Pure Rust.</h1>
+        <p class="hero-subtitle">
+          Deleting an actor from video requires more than pixel erasure. <strong>void-model-rs</strong> combines 4-state <code>QuadMask</code> truth-table synthesis, multimodal VLM physical dependency graphs, subpixel optical-flow-warped latent diffusion noise (<code>[16×60×90]</code>), and counterfactual gravity &amp; harmonic rebound dynamics in a zero-Python native Rust engine.
+        </p>
+        <div class="cta-row">
+          <a href="#studio" class="btn-primary">Launch Counterfactual Studio ↓</a>
+          <a href="https://github.com/bhubbard/void-model-rs" target="_blank" rel="noopener" class="btn-secondary">View Source on GitHub ↗</a>
+          <a href="benchmarks.md" class="btn-secondary">Read BENCHMARKS.md</a>
+        </div>
+      </div>
+      <div class="hero-kpis">
+        <div class="kpi-cell">
+          <span class="kpi-label">Host Pipeline Speedup</span>
+          <div class="kpi-val">44.6x</div>
+          <span class="kpi-sub">1.53 ms vs 68.24 ms (Python)</span>
+        </div>
+        <div class="kpi-cell">
+          <span class="kpi-label">QuadMask Composition</span>
+          <div class="kpi-val">66.9x</div>
+          <span class="kpi-sub">0.29 ms / 49-Frame Clip</span>
+        </div>
+        <div class="kpi-cell">
+          <span class="kpi-label">Pass 2 Latent Warping</span>
+          <div class="kpi-val">0.91 ms</div>
+          <span class="kpi-sub">[16×60×90] Bilinear + λ=0.30</span>
+        </div>
+        <div class="kpi-cell">
+          <span class="kpi-label">Peak Memory Footprint</span>
+          <div class="kpi-val">11.2 MB</div>
+          <span class="kpi-sub">132x Lower RSS than PyTorch</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Interactive Studio -->
+    <div class="section-bar" id="studio">
+      <h2>01 // Interactive Counterfactual Video Object &amp; Interaction Deletion Studio</h2>
+      <span class="section-tag">DRAG SPLIT HANDLE ON CANVAS • LIVE PHYSICS &amp; FLOW-WARPED LATENT SIMULATOR</span>
+    </div>
+
+    <section class="studio-grid">
+      <!-- Left Sidebar: Scenarios & Hyperparameters -->
+      <aside class="studio-sidebar">
+        <div class="panel-title">
+          <span>Counterfactual Scene Preset</span>
+          <span>4 SCENARIOS</span>
+        </div>
+        <div class="scenario-list" id="scenarioList">
+          <button type="button" class="scenario-btn active" data-scenario="guitar">
+            <div class="scenario-btn-title">
+              <span>01. Guitarist Support Loss</span>
+              <span style="color:var(--accent-rose)">FREE-FALL</span>
+            </div>
+            <div class="scenario-btn-desc">Deleting the musician releases the supported acoustic guitar into parabolic free-fall with floor bounce damping.</div>
+          </button>
+          <button type="button" class="scenario-btn" data-scenario="trampoline">
+            <div class="scenario-btn-title">
+              <span>02. Trampoline Acrobat</span>
+              <span style="color:var(--accent-sky)">REBOUND</span>
+            </div>
+            <div class="scenario-btn-desc">Deleting the acrobat unloads the depressed trampoline surface, triggering damped harmonic relaxation.</div>
+          </button>
+          <button type="button" class="scenario-btn" data-scenario="magician">
+            <div class="scenario-btn-title">
+              <span>03. Magician &amp; Floating Cane</span>
+              <span style="color:var(--accent-amber)">BELONGINGS</span>
+            </div>
+            <div class="scenario-btn-desc">Erases primary actor + integral top hat/cape, drops unsupported cane, and removes specular floor reflection.</div>
+          </button>
+          <button type="button" class="scenario-btn" data-scenario="table">
+            <div class="scenario-btn-title">
+              <span>04. Pedestal Table Cascade</span>
+              <span style="color:var(--accent-emerald)">MULTI-BODY</span>
+            </div>
+            <div class="scenario-btn-desc">Removing the supporting pedestal table triggers simultaneous gravitational drop across stacked bowls.</div>
+          </button>
+        </div>
+
+        <div class="panel-title">
+          <span>Pass 2 &amp; Physics Controls</span>
+          <span>REAL-TIME</span>
+        </div>
+
+        <div class="control-group">
+          <div class="control-label">
+            <span>Noise Degradation (λ)</span>
+            <span class="control-val" id="valLambda">0.30</span>
+          </div>
+          <input type="range" id="sliderLambda" min="0.00" max="1.00" step="0.02" value="0.30" />
+        </div>
+
+        <div class="control-group">
+          <div class="control-label">
+            <span>QuadMask Dilation Radius</span>
+            <span class="control-val" id="valDilate">2 px</span>
+          </div>
+          <input type="range" id="sliderDilate" min="0" max="8" step="1" value="2" />
+        </div>
+
+        <div class="control-group">
+          <div class="control-label">
+            <span>Gravity Accel (g)</span>
+            <span class="control-val" id="valGravity">980 px/s²</span>
+          </div>
+          <input type="range" id="sliderGravity" min="300" max="1600" step="20" value="980" />
+        </div>
+
+        <div class="control-group">
+          <div class="control-label">
+            <span>Harmonic Damping (γ)</span>
+            <span class="control-val" id="valDamping">2.50 s⁻¹</span>
+          </div>
+          <input type="range" id="sliderDamping" min="0.5" max="6.0" step="0.25" value="2.50" />
+        </div>
+
+        <div class="control-group">
+          <div class="control-label">
+            <span>Split Wipe Position</span>
+            <span class="control-val" id="valWipe">50%</span>
+          </div>
+          <input type="range" id="sliderWipe" min="5" max="95" step="1" value="50" />
+        </div>
+      </aside>
+
+      <!-- Center Viewport -->
+      <div class="studio-center">
+        <div class="viewport-toolbar">
+          <div class="mode-tabs" id="modeTabs">
+            <button type="button" class="mode-tab active" data-mode="split">Split Wipe (Input vs VOID)</button>
+            <button type="button" class="mode-tab" data-mode="quadmask">QuadMask (0 / 63 / 127 / 255)</button>
+            <button type="button" class="mode-tab" data-mode="latent">Pass 2 Warped Latent [16×60×90]</button>
+            <button type="button" class="mode-tab" data-mode="grid">3-Up Studio Review Grid</button>
+          </div>
+          <span class="section-tag" id="viewportStatus">PASS 2 CORRELATION: 0.954</span>
+        </div>
+
+        <div class="canvas-wrap" id="canvasContainer">
+          <canvas id="voidCanvas" width="800" height="500"></canvas>
+        </div>
+
+        <div class="transport-bar">
+          <button type="button" class="play-btn" id="playPauseBtn">PAUSE ❚❚</button>
+          <input type="range" id="frameScrubber" min="0" max="48" step="1" value="0" style="flex:1" />
+          <div class="frame-readout" id="frameReadout">FRAME 00 / 48 (30 FPS)</div>
+        </div>
+
+        <div class="quadmask-stats-grid" id="quadmask-spec">
+          <div class="qm-cell">
+            <div class="qm-head">
+              <span class="qm-swatch" style="background:#f43f5e"></span>
+              <span>0: PRIMARY OBJECT</span>
+            </div>
+            <div class="qm-val" id="statPrimary">42,810 px</div>
+          </div>
+          <div class="qm-cell">
+            <div class="qm-head">
+              <span class="qm-swatch" style="background:#f59e0b"></span>
+              <span>63: OVERLAP ZONE</span>
+            </div>
+            <div class="qm-val" id="statOverlap">6,420 px</div>
+          </div>
+          <div class="qm-cell">
+            <div class="qm-head">
+              <span class="qm-swatch" style="background:#38bdf8"></span>
+              <span>127: AFFECTED / SHADOW</span>
+            </div>
+            <div class="qm-val" id="statAffected">28,190 px</div>
+          </div>
+          <div class="qm-cell">
+            <div class="qm-head">
+              <span class="qm-swatch" style="background:#262626"></span>
+              <span>255: BACKGROUND</span>
+            </div>
+            <div class="qm-val" id="statBg">268,180 px</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Sidebar: Physics Oscilloscope & VLM Contact Graph -->
+      <aside class="studio-right">
+        <div class="panel-title">
+          <span>Counterfactual Trajectory y(t)</span>
+          <span id="eqBadge" style="color:var(--accent-emerald)">y₀ + ½gt²</span>
+        </div>
+        <div class="osc-wrap">
+          <canvas id="physicsCanvas" width="320" height="145"></canvas>
+        </div>
+
+        <div class="panel-title">
+          <span>VLM Scene Interaction Graph</span>
+          <span>STAGE 2 DAG</span>
+        </div>
+        <div class="vlm-graph-list" id="vlmGraphContainer"></div>
+
+        <div class="panel-title">
+          <span>Live CLI Command Equivalent</span>
+          <span>RUST BIN</span>
+        </div>
+        <pre class="code-box" id="cliPreviewBox" style="font-size:10.5px;padding:12px;"></pre>
+      </aside>
+    </section>
+
+    <!-- Benchmarks & WGPU Shader Section -->
+    <section class="two-col" id="benchmarks">
+      <div class="col-pane">
+        <div class="panel-title" style="margin-bottom:16px;">
+          <span>03 // Empirical Performance Benchmarks (49 Frames @ 720×480)</span>
+          <span class="speedup-pill">44.6x FASTER</span>
+        </div>
+        <table class="swiss-table">
+          <thead>
+            <tr>
+              <th>VOID Pipeline Stage</th>
+              <th>Python Reference</th>
+              <th>Rust void-model-rs</th>
+              <th>Speedup</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Stage 1: QuadMask Truth-Table Combine</td>
+              <td>19.40 ms</td>
+              <td><strong>0.29 ms</strong></td>
+              <td class="speedup-pill">66.9x</td>
+            </tr>
+            <tr>
+              <td>Stage 2: Chebyshev Mask Dilation (r=2)</td>
+              <td>8.75 ms</td>
+              <td><strong>0.18 ms</strong></td>
+              <td class="speedup-pill">48.6x</td>
+            </tr>
+            <tr>
+              <td>Stage 3: VLM Contact Graph Resolution</td>
+              <td>2.14 ms</td>
+              <td><strong>0.04 ms</strong></td>
+              <td class="speedup-pill">53.5x</td>
+            </tr>
+            <tr>
+              <td>Stage 4: Flow Downsampling (720×480→90×60)</td>
+              <td>4.60 ms</td>
+              <td><strong>0.09 ms</strong></td>
+              <td class="speedup-pill">51.1x</td>
+            </tr>
+            <tr>
+              <td>Stage 5: Pass 2 Subpixel Latent Noise Warp</td>
+              <td>31.80 ms</td>
+              <td><strong>0.91 ms</strong></td>
+              <td class="speedup-pill">34.9x</td>
+            </tr>
+            <tr>
+              <td>Stage 6: Counterfactual Physics Solver</td>
+              <td>1.55 ms</td>
+              <td><strong>0.02 ms</strong></td>
+              <td class="speedup-pill">77.5x</td>
+            </tr>
+            <tr>
+              <td><strong>Total Host Pipeline Latency</strong></td>
+              <td><strong>68.24 ms</strong></td>
+              <td><strong>1.53 ms</strong></td>
+              <td class="speedup-pill">44.6x</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="col-pane" id="wgsl-shader">
+        <div class="panel-title" style="margin-bottom:16px;">
+          <span>04 // WGPU Pass 2 Latent Noise Advection Shader (WGSL)</span>
+          <span>src/flow/warped_noise.rs</span>
+        </div>
+        <pre class="code-box">@compute @workgroup_size(8, 8, 1)
+fn main(@builtin(global_invocation_id) gid: vec3&lt;u32&gt;) {
+    let x = gid.x; let y = gid.y;
+    if (x &gt;= params.width || y &gt;= params.height) { return; }
+    let uv = flow_uv[y * params.width + x];
+    let sx = clamp(f32(x) - uv.x, 0.0, f32(params.width - 1u));
+    let sy = clamp(f32(y) - uv.y, 0.0, f32(params.height - 1u));
+    let x0 = u32(floor(sx)); let y0 = u32(floor(sy));
+    let x1 = min(x0 + 1u, params.width - 1u);
+    let y1 = min(y0 + 1u, params.height - 1u);
+    let dx = sx - f32(x0); let dy = sy - f32(y0);
+    let w_warp = sqrt(max(1.0 - params.lambda * params.lambda, 0.0));
+    let plane = params.height * params.width;
+    for (var c: u32 = 0u; c &lt; params.channels; c = c + 1u) {
+        let base = c * plane;
+        let warped = (1.0 - dx) * (1.0 - dy) * prev_latent[base + y0 * params.width + x0]
+                   + dx * (1.0 - dy) * prev_latent[base + y0 * params.width + x1]
+                   + (1.0 - dx) * dy * prev_latent[base + y1 * params.width + x0]
+                   + dx * dy * prev_latent[base + y1 * params.width + x1];
+        let idx = base + y * params.width + x;
+        out_latent[idx] = w_warp * warped + params.lambda * fresh_latent[idx];
+    }
+}</pre>
+      </div>
+    </section>
+  </main>
+
+  <footer class="bh-footer">
+    <div>bhubbard / void-model-rs — Apache-2.0 License • Built with native Rust</div>
+    <div>
+      <a href="https://code.brandonhubbard.com/">← Back to Brandon Hubbard Engineering Portal</a>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      // Theme toggle
+      const themeBtn = document.getElementById('themeToggle');
+      themeBtn.addEventListener('click', () => {
+        const html = document.documentElement;
+        const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        html.setAttribute('data-theme', next);
+        themeBtn.textContent = 'THEME: ' + next.toUpperCase();
+      });
+
+      // Scenario database
+      const SCENARIOS = {
+        guitar: {
+          title: 'Guitarist Support Loss',
+          primary: 'person_musician',
+          simType: 'fall',
+          equation: 'y(t) = y₀ + ½gt² (e=0.42)',
+          baseStats: [44200, 6850, 29400],
+          entities: [
+            { name: 'person_musician', role: 'PrimaryRemoval', move: false, color: '#f43f5e', desc: 'Primary actor deleted from stage center.' },
+            { name: 'acoustic_guitar', role: 'SupportRemoval', move: true, color: '#f59e0b', desc: 'Loses physical support at t=0; enters gravitational free-fall.' },
+            { name: 'stage_shadow', role: 'SecondaryShadow', move: false, color: '#38bdf8', desc: 'Cast contact shadow on hardwood stage floor erased.' }
+          ]
+        },
+        trampoline: {
+          title: 'Trampoline Acrobat Rebound',
+          primary: 'acrobat_jumper',
+          simType: 'rebound',
+          equation: 'y(t) = y_eq + Δy·e^(-γt)cos(ωt)',
+          baseStats: [38900, 5120, 34800],
+          entities: [
+            { name: 'acrobat_jumper', role: 'PrimaryRemoval', move: false, color: '#f43f5e', desc: 'Primary actor deleted at peak mat depression.' },
+            { name: 'trampoline_mat', role: 'PhysicalDeformation', move: true, color: '#38bdf8', desc: 'Depressed elastic membrane rebounds via damped harmonic oscillation.' },
+            { name: 'mat_contact_shadow', role: 'SecondaryShadow', move: false, color: '#a855f7', desc: 'Soft ambient occlusion shadow on trampoline mesh removed.' }
+          ]
+        },
+        magician: {
+          title: 'Magician & Floating Cane',
+          primary: 'stage_magician',
+          simType: 'fall',
+          equation: 'y(t) = y₀ + v₀t + ½gt²',
+          baseStats: [49100, 7340, 31250],
+          entities: [
+            { name: 'stage_magician', role: 'PrimaryRemoval', move: false, color: '#f43f5e', desc: 'Primary magician deleted from frame.' },
+            { name: 'top_hat_and_cape', role: 'IntegralBelonging', move: false, color: '#a855f7', desc: 'Integral attire attached to actor removed simultaneously.' },
+            { name: 'brass_cane', role: 'SupportRemoval', move: true, color: '#f59e0b', desc: 'Unsupported cane drops vertically and bounces on stage.' },
+            { name: 'floor_reflection', role: 'SecondaryReflection', move: false, color: '#38bdf8', desc: 'Specular reflection on polished stage floor harmonized.' }
+          ]
+        },
+        table: {
+          title: 'Pedestal Table Cascade',
+          primary: 'pedestal_table',
+          simType: 'fall',
+          equation: 'Multi-Body Parabolic Cascade',
+          baseStats: [52400, 8910, 26700],
+          entities: [
+            { name: 'pedestal_table', role: 'PrimaryRemoval', move: false, color: '#f43f5e', desc: 'Supporting wooden table removed from dining room.' },
+            { name: 'ceramic_bowls_x3', role: 'SupportRemoval', move: true, color: '#f59e0b', desc: 'Three supported bowls lose normal force and accelerate downward.' },
+            { name: 'carpet_indentation', role: 'PhysicalDeformation', move: false, color: '#10b981', desc: 'Rug compression footprint beneath pedestal base restored.' }
+          ]
+        }
+      };
+
+      let currentScenario = 'guitar';
+      let currentMode = 'split';
+      let currentFrame = 0;
+      let isPlaying = true;
+      let lambda = 0.30;
+      let dilateRadius = 2;
+      let gravity = 980;
+      let damping = 2.5;
+      let wipePct = 50;
+
+      const voidCanvas = document.getElementById('voidCanvas');
+      const ctx = voidCanvas.getContext('2d');
+      const physCanvas = document.getElementById('physicsCanvas');
+      const pctx = physCanvas.getContext('2d');
+
+      const sliderLambda = document.getElementById('sliderLambda');
+      const sliderDilate = document.getElementById('sliderDilate');
+      const sliderGravity = document.getElementById('sliderGravity');
+      const sliderDamping = document.getElementById('sliderDamping');
+      const sliderWipe = document.getElementById('sliderWipe');
+      const frameScrubber = document.getElementById('frameScrubber');
+      const playPauseBtn = document.getElementById('playPauseBtn');
+
+      function renderVlmGraph() {
+        const sc = SCENARIOS[currentScenario];
+        document.getElementById('eqBadge').textContent = sc.equation;
+        const container = document.getElementById('vlmGraphContainer');
+        container.innerHTML = sc.entities.map(e => `
+          <div class="vlm-node">
+            <div class="vlm-node-top">
+              <span style="color:${e.color}">${e.name}</span>
+              <span class="vlm-tag" style="color:${e.color}">${e.role}</span>
+            </div>
+            <div style="color:var(--text-secondary);font-size:10.5px;">${e.desc}</div>
+          </div>
+        `).join('');
+
+        const corr = Math.sqrt(Math.max(0, 1 - lambda * lambda)).toFixed(3);
+        document.getElementById('viewportStatus').textContent =
+          `PASS 2 CORRELATION: ${corr} • DILATION: ${dilateRadius}px`;
+
+        const [p0, o0, a0] = sc.baseStats;
+        const mult = 1 + dilateRadius * 0.065;
+        const p = Math.round(p0 * mult);
+        const o = Math.round(o0 * mult);
+        const a = Math.round(a0 * mult);
+        const bg = Math.max(0, 345600 - p - o - a);
+        document.getElementById('statPrimary').textContent = p.toLocaleString() + ' px';
+        document.getElementById('statOverlap').textContent = o.toLocaleString() + ' px';
+        document.getElementById('statAffected').textContent = a.toLocaleString() + ' px';
+        document.getElementById('statBg').textContent = bg.toLocaleString() + ' px';
+
+        document.getElementById('cliPreviewBox').textContent =
+`void reason --object "${sc.primary}"
+void warp --channels 16 --height 60 --width 90 \\
+  --degradation ${lambda.toFixed(2)}
+void physics --sim-type ${sc.simType} \\
+  --frames 49 --fps 30.0`;
+      }
+
+      // Compute object vertical position at frame f (0..48)
+      function computePhysicsY(f, scenarioKey) {
+        const t = f / 30.0;
+        if (scenarioKey === 'trampoline') {
+          // Damped harmonic rebound around neutral y = 0.62
+          const omega = 2 * Math.PI * 2.2;
+          return 0.62 + 0.18 * Math.exp(-damping * t) * Math.cos(omega * t);
+        } else {
+          // Parabolic free-fall with floor bounce at y = 0.76
+          const gNorm = gravity / 1400.0;
+          let y = 0.36 + 0.5 * gNorm * t * t;
+          const floorY = 0.76;
+          if (y > floorY) {
+            const tHit = Math.sqrt((2 * (floorY - 0.36)) / gNorm);
+            const dt = t - tHit;
+            const vImpact = gNorm * tHit;
+            const bounce = vImpact * 0.45 * dt - 0.5 * gNorm * dt * dt;
+            y = Math.min(floorY, floorY - Math.max(0, bounce));
+          }
+          return y;
+        }
+      }
+
+      function drawSceneHalf(targetCtx, xOffset, width, height, isCounterfactual, modeOverride) {
+        targetCtx.save();
+        targetCtx.beginPath();
+        targetCtx.rect(xOffset, 0, width, height);
+        targetCtx.clip();
+
+        const t = currentFrame / 30.0;
+        const mode = modeOverride || currentMode;
+
+        if (mode === 'quadmask') {
+          // Canonical 4-state QuadMask truth-table view
+          targetCtx.fillStyle = '#1f1f1f'; // 255 background dark representation
+          targetCtx.fillRect(xOffset, 0, width, height);
+
+          const cx = xOffset + width * 0.46;
+          const cy = height * 0.48;
+          const rPad = dilateRadius * 2.2;
+
+          // Affected shadow (127)
+          targetCtx.fillStyle = '#808080';
+          targetCtx.beginPath();
+          targetCtx.ellipse(cx + 25, height * 0.79, 85 + rPad, 22 + rPad * 0.5, 0, 0, Math.PI * 2);
+          targetCtx.fill();
+
+          // Primary object (0)
+          targetCtx.fillStyle = '#000000';
+          targetCtx.strokeStyle = '#f43f5e';
+          targetCtx.lineWidth = 1.5;
+          targetCtx.fillRect(cx - 46 - rPad, cy - 115 - rPad, 92 + rPad * 2, 215 + rPad * 2);
+          targetCtx.strokeRect(cx - 46 - rPad, cy - 115 - rPad, 92 + rPad * 2, 215 + rPad * 2);
+
+          // Overlap region (63)
+          const objY = height * computePhysicsY(currentFrame, currentScenario);
+          targetCtx.fillStyle = '#404040';
+          targetCtx.strokeStyle = '#f59e0b';
+          targetCtx.fillRect(cx + 8 - rPad, cy - 20 - rPad, 58 + rPad * 2, 42 + rPad * 2);
+          targetCtx.strokeRect(cx + 8 - rPad, cy - 20 - rPad, 58 + rPad * 2, 42 + rPad * 2);
+
+          // Secondary dynamic trajectory region (127)
+          targetCtx.fillStyle = '#7f7f7f';
+          targetCtx.strokeStyle = '#38bdf8';
+          targetCtx.beginPath();
+          targetCtx.arc(cx + 52, objY, 28 + rPad, 0, Math.PI * 2);
+          targetCtx.fill();
+          targetCtx.stroke();
+
+          targetCtx.restore();
+          return;
+        }
+
+        if (mode === 'latent') {
+          // Pass 2 Flow-Warped Latent Noise Grid [16 x 60 x 90]
+          targetCtx.fillStyle = '#06080e';
+          targetCtx.fillRect(xOffset, 0, width, height);
+          const cols = 32;
+          const rows = 20;
+          const cw = width / cols;
+          const ch = height / rows;
+          const weightWarp = Math.sqrt(Math.max(0, 1 - lambda * lambda));
+
+          for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+              const gx = xOffset + c * cw;
+              const gy = r * ch;
+              // Advected phase
+              const flowU = Math.sin(r * 0.25 + t * 2.2) * 1.6;
+              const flowV = Math.cos(c * 0.22 + t * 1.8) * 1.2;
+              const coherent = Math.sin((c - flowU) * 0.7 + (r - flowV) * 0.6);
+              const fresh = Math.sin((c * 19 + r * 37 + currentFrame * 13) * 1.7);
+              const val = weightWarp * coherent + lambda * fresh;
+              const norm = Math.floor(((val + 1.2) / 2.4) * 255);
+              const cl = Math.max(15, Math.min(245, norm));
+              targetCtx.fillStyle = `rgb(${Math.floor(cl * 0.25)}, ${Math.floor(cl * 0.65)}, ${cl})`;
+              targetCtx.fillRect(gx + 1, gy + 1, cw - 2, ch - 2);
+
+              // Optical flow vector arrow
+              if ((r + c) % 2 === 0) {
+                targetCtx.strokeStyle = 'rgba(244,63,94,0.75)';
+                targetCtx.beginPath();
+                targetCtx.moveTo(gx + cw * 0.5, gy + ch * 0.5);
+                targetCtx.lineTo(gx + cw * 0.5 + flowU * 5, gy + ch * 0.5 + flowV * 5);
+                targetCtx.stroke();
+              }
+            }
+          }
+          targetCtx.restore();
+          return;
+        }
+
+        // Studio background environment (Original vs Counterfactual VOID Inpaint)
+        const grad = targetCtx.createLinearGradient(0, 0, 0, height);
+        grad.addColorStop(0, '#10131a');
+        grad.addColorStop(0.7, '#161b26');
+        grad.addColorStop(0.71, '#1d1814');
+        grad.addColorStop(1, '#120e0b');
+        targetCtx.fillStyle = grad;
+        targetCtx.fillRect(xOffset, 0, width, height);
+
+        // Architectural perspective grid lines on stage floor
+        targetCtx.strokeStyle = 'rgba(255,255,255,0.06)';
+        targetCtx.lineWidth = 1;
+        const horizonY = height * 0.71;
+        targetCtx.beginPath();
+        targetCtx.moveTo(xOffset, horizonY);
+        targetCtx.lineTo(xOffset + width, horizonY);
+        targetCtx.stroke();
+
+        const actorX = xOffset + width * 0.45 + Math.sin(t * 1.5) * 6;
+        const actorTopY = height * 0.24;
+        const actorBotY = height * 0.76;
+
+        if (!isCounterfactual) {
+          // ORIGINAL INPUT SCENE: Primary Actor + Cast Shadow + Held/Depressed Object
+          // 1. Cast Shadow (127)
+          targetCtx.fillStyle = 'rgba(0, 0, 0, 0.58)';
+          targetCtx.beginPath();
+          targetCtx.ellipse(actorX + 26, height * 0.78, 84, 18, 0, 0, Math.PI * 2);
+          targetCtx.fill();
+
+          // 2. Primary Actor Silhouette (0)
+          targetCtx.fillStyle = '#334155';
+          targetCtx.strokeStyle = '#f43f5e';
+          targetCtx.lineWidth = 2;
+          targetCtx.fillRect(actorX - 38, actorTopY + 36, 76, actorBotY - actorTopY - 36);
+          targetCtx.strokeRect(actorX - 38, actorTopY + 36, 76, actorBotY - actorTopY - 36);
+
+          // Actor Head
+          targetCtx.beginPath();
+          targetCtx.arc(actorX, actorTopY + 14, 22, 0, Math.PI * 2);
+          targetCtx.fill();
+          targetCtx.stroke();
+
+          // Label tag
+          targetCtx.fillStyle = '#f43f5e';
+          targetCtx.font = '700 10px "JetBrains Mono", monospace';
+          targetCtx.fillText('PRIMARY [0]: ' + SCENARIOS[currentScenario].primary.toUpperCase(), actorX - 55, actorTopY - 14);
+        }
+
+        // Secondary / Affected Object behavior:
+        if (currentScenario === 'trampoline') {
+          const matY = isCounterfactual
+            ? height * computePhysicsY(currentFrame, 'trampoline')
+            : height * 0.80;
+          targetCtx.strokeStyle = isCounterfactual ? '#10b981' : '#38bdf8';
+          targetCtx.lineWidth = 4;
+          targetCtx.beginPath();
+          targetCtx.moveTo(xOffset + width * 0.22, height * 0.62);
+          targetCtx.quadraticCurveTo(actorX, matY, xOffset + width * 0.72, height * 0.62);
+          targetCtx.stroke();
+        } else {
+          // Supported object (Guitar / Cane / Bowls)
+          const objY = isCounterfactual
+            ? height * computePhysicsY(currentFrame, currentScenario)
+            : height * 0.36;
+          const objX = actorX + 46;
+
+          if (isCounterfactual) {
+            // Draw motion trail of counterfactual gravity drop
+            targetCtx.strokeStyle = 'rgba(16, 185, 129, 0.45)';
+            targetCtx.setLineDash([4, 4]);
+            targetCtx.beginPath();
+            targetCtx.moveTo(objX, height * 0.36);
+            targetCtx.lineTo(objX, objY);
+            targetCtx.stroke();
+            targetCtx.setLineDash([]);
+          }
+
+          targetCtx.fillStyle = isCounterfactual ? '#10b981' : '#f59e0b';
+          targetCtx.strokeStyle = '#ffffff';
+          targetCtx.lineWidth = 1.5;
+          targetCtx.beginPath();
+          targetCtx.arc(objX, objY, 22, 0, Math.PI * 2);
+          targetCtx.fill();
+          targetCtx.stroke();
+
+          targetCtx.fillStyle = '#fafafa';
+          targetCtx.font = '700 10px "JetBrains Mono", monospace';
+          targetCtx.fillText(
+            isCounterfactual ? 'COUNTERFACTUAL GRAVITY y(t)' : 'SUPPORTED [127]',
+            objX + 28,
+            objY + 4
+          );
+        }
+
+        targetCtx.restore();
+      }
+
+      function renderViewport() {
+        const w = voidCanvas.width;
+        const h = voidCanvas.height;
+        ctx.clearRect(0, 0, w, h);
+
+        if (currentMode === 'split') {
+          const splitX = Math.round((wipePct / 100) * w);
+          // Left: Original with primary object; Right: Counterfactual VOID result
+          drawSceneHalf(ctx, 0, w, h, false, 'split');
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(splitX, 0, w - splitX, h);
+          ctx.clip();
+          drawSceneHalf(ctx, 0, w, h, true, 'split');
+          ctx.restore();
+
+          // Split line & handle
+          ctx.strokeStyle = '#f43f5e';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(splitX, 0);
+          ctx.lineTo(splitX, h);
+          ctx.stroke();
+
+          ctx.fillStyle = '#0a0a0a';
+          ctx.strokeStyle = '#fafafa';
+          ctx.fillRect(splitX - 58, 14, 52, 20);
+          ctx.fillRect(splitX + 6, 14, 88, 20);
+          ctx.fillStyle = '#fafafa';
+          ctx.font = '700 10px "JetBrains Mono", monospace';
+          ctx.fillText('INPUT', splitX - 48, 28);
+          ctx.fillStyle = '#10b981';
+          ctx.fillText('VOID INPAINT', splitX + 12, 28);
+        } else if (currentMode === 'quadmask') {
+          drawSceneHalf(ctx, 0, w, h, false, 'quadmask');
+        } else if (currentMode === 'latent') {
+          drawSceneHalf(ctx, 0, w, h, true, 'latent');
+        } else if (currentMode === 'grid') {
+          const third = Math.floor(w / 3);
+          drawSceneHalf(ctx, 0, third, h, false, 'split');
+          drawSceneHalf(ctx, third, third, h, false, 'quadmask');
+          drawSceneHalf(ctx, third * 2, w - third * 2, h, true, 'split');
+
+          ctx.strokeStyle = '#404040';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(third, 0); ctx.lineTo(third, h);
+          ctx.moveTo(third * 2, 0); ctx.lineTo(third * 2, h);
+          ctx.stroke();
+        }
+      }
+
+      function renderPhysicsOscilloscope() {
+        const w = physCanvas.width;
+        const h = physCanvas.height;
+        pctx.fillStyle = '#060606';
+        pctx.fillRect(0, 0, w, h);
+
+        // Grid lines
+        pctx.strokeStyle = '#1d1d1d';
+        pctx.lineWidth = 1;
+        for (let y = 25; y < h; y += 30) {
+          pctx.beginPath();
+          pctx.moveTo(0, y);
+          pctx.lineTo(w, y);
+          pctx.stroke();
+        }
+
+        // Trajectory curve across all 49 frames
+        pctx.strokeStyle = '#10b981';
+        pctx.lineWidth = 2;
+        pctx.beginPath();
+        for (let f = 0; f <= 48; f++) {
+          const px = 12 + (f / 48) * (w - 24);
+          const normY = computePhysicsY(f, currentScenario);
+          const py = 10 + ((normY - 0.30) / 0.55) * (h - 24);
+          if (f === 0) pctx.moveTo(px, py);
+          else pctx.lineTo(px, py);
+        }
+        pctx.stroke();
+
+        // Current frame marker
+        const curX = 12 + (currentFrame / 48) * (w - 24);
+        const curNormY = computePhysicsY(currentFrame, currentScenario);
+        const curY = 10 + ((curNormY - 0.30) / 0.55) * (h - 24);
+
+        pctx.fillStyle = '#f43f5e';
+        pctx.beginPath();
+        pctx.arc(curX, curY, 4.5, 0, Math.PI * 2);
+        pctx.fill();
+      }
+
+      // Interactive drag on canvas for Split Wipe
+      let isDraggingWipe = false;
+      voidCanvas.addEventListener('pointerdown', (e) => {
+        if (currentMode !== 'split') return;
+        isDraggingWipe = true;
+        updateWipeFromPointer(e);
+      });
+      window.addEventListener('pointermove', (e) => {
+        if (!isDraggingWipe) return;
+        updateWipeFromPointer(e);
+      });
+      window.addEventListener('pointerup', () => {
+        isDraggingWipe = false;
+      });
+      function updateWipeFromPointer(e) {
+        const rect = voidCanvas.getBoundingClientRect();
+        const relX = Math.max(0.05, Math.min(0.95, (e.clientX - rect.left) / rect.width));
+        wipePct = Math.round(relX * 100);
+        sliderWipe.value = wipePct;
+        document.getElementById('valWipe').textContent = wipePct + '%';
+        renderViewport();
+      }
+
+      // Controls wiring
+      document.getElementById('scenarioList').addEventListener('click', (e) => {
+        const btn = e.target.closest('.scenario-btn');
+        if (!btn) return;
+        document.querySelectorAll('.scenario-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentScenario = btn.dataset.scenario;
+        renderVlmGraph();
+        renderViewport();
+        renderPhysicsOscilloscope();
+      });
+
+      document.getElementById('modeTabs').addEventListener('click', (e) => {
+        const tab = e.target.closest('.mode-tab');
+        if (!tab) return;
+        document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        currentMode = tab.dataset.mode;
+        renderViewport();
+      });
+
+      sliderLambda.addEventListener('input', () => {
+        lambda = parseFloat(sliderLambda.value);
+        document.getElementById('valLambda').textContent = lambda.toFixed(2);
+        renderVlmGraph();
+        renderViewport();
+      });
+
+      sliderDilate.addEventListener('input', () => {
+        dilateRadius = parseInt(sliderDilate.value, 10);
+        document.getElementById('valDilate').textContent = dilateRadius + ' px';
+        renderVlmGraph();
+        renderViewport();
+      });
+
+      sliderGravity.addEventListener('input', () => {
+        gravity = parseInt(sliderGravity.value, 10);
+        document.getElementById('valGravity').textContent = gravity + ' px/s²';
+        renderViewport();
+        renderPhysicsOscilloscope();
+      });
+
+      sliderDamping.addEventListener('input', () => {
+        damping = parseFloat(sliderDamping.value);
+        document.getElementById('valDamping').textContent = damping.toFixed(2) + ' s⁻¹';
+        renderViewport();
+        renderPhysicsOscilloscope();
+      });
+
+      sliderWipe.addEventListener('input', () => {
+        wipePct = parseInt(sliderWipe.value, 10);
+        document.getElementById('valWipe').textContent = wipePct + '%';
+        renderViewport();
+      });
+
+      frameScrubber.addEventListener('input', () => {
+        currentFrame = parseInt(frameScrubber.value, 10);
+        document.getElementById('frameReadout').textContent =
+          `FRAME ${String(currentFrame).padStart(2, '0')} / 48 (30 FPS)`;
+        renderViewport();
+        renderPhysicsOscilloscope();
+      });
+
+      playPauseBtn.addEventListener('click', () => {
+        isPlaying = !isPlaying;
+        playPauseBtn.textContent = isPlaying ? 'PAUSE ❚❚' : 'PLAY ▶';
+      });
+
+      // Animation loop
+      let lastTick = performance.now();
+      function tick(now) {
+        if (isPlaying && now - lastTick >= 65) {
+          currentFrame = (currentFrame + 1) % 49;
+          frameScrubber.value = currentFrame;
+          document.getElementById('frameReadout').textContent =
+            `FRAME ${String(currentFrame).padStart(2, '0')} / 48 (30 FPS)`;
+          renderViewport();
+          renderPhysicsOscilloscope();
+          lastTick = now;
+        }
+        requestAnimationFrame(tick);
+      }
+
+      renderVlmGraph();
+      renderViewport();
+      renderPhysicsOscilloscope();
+      requestAnimationFrame(tick);
+    })();
+  </script>
+</body>
+</html>
