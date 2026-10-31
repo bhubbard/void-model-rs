@@ -8,6 +8,7 @@ pub mod mask;
 pub mod physics;
 pub mod pipeline;
 pub mod vlm;
+pub mod vmaf;
 
 pub use flow::{FlowVector, LatentNoiseTensor, OpticalFlowField, WarpedNoiseEngine};
 pub use mask::{
@@ -22,3 +23,4 @@ pub use vlm::{
     ContactRelation, ContactRelationType, InteractionType, SceneEntity, SceneInteractionGraph,
     VlmObjectAnalysis, VlmReasoner, VlmSceneAnalysis,
 };
+pub use vmaf::{VmafEvaluator, VmafFrameScore};
