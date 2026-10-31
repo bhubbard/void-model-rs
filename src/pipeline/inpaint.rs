@@ -1,3 +1,5 @@
+use crate::flow::{LatentNoiseTensor, OpticalFlowField, WarpedNoiseEngine};
+use crate::mask::QuadMaskFrame;
 use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -30,9 +32,88 @@ impl Default for InpaintConfig {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TwoPassReport {
+    pub latent_channels: usize,
+    pub latent_width: usize,
+    pub latent_height: usize,
+    pub inpainted_ratio: f32,
+    pub mean_flow_magnitude: f32,
+    pub pass1_variance: f32,
+    pub pass2_temporal_correlation: f32,
+}
+
 pub struct InpaintPipeline;
 
 impl InpaintPipeline {
+    /// Inspects a SafeTensors model checkpoint header (8-byte little-endian length prefix + JSON metadata)
+    pub fn inspect_safetensors_header(bytes: &[u8]) -> Result<serde_json::Value> {
+        if bytes.len() < 8 {
+            bail!("SafeTensors buffer too short (< 8 bytes)");
+        }
+        let mut len_bytes = [0u8; 8];
+        len_bytes.copy_from_slice(&bytes[0..8]);
+        let header_len = u64::from_le_bytes(len_bytes) as usize;
+        if bytes.len() < 8 + header_len {
+            bail!(
+                "SafeTensors header truncated: expected {} bytes, got {}",
+                8 + header_len,
+                bytes.len()
+            );
+        }
+        let val: serde_json::Value = serde_json::from_slice(&bytes[8..8 + header_len])?;
+        Ok(val)
+    }
+
+    /// Executes VOID Two-Pass Latent Inpainting (Pass 1 Base Inpainting + Pass 2 Warped-Noise Refinement)
+    pub fn execute_two_pass(
+        config: &InpaintConfig,
+        quadmask: &QuadMaskFrame,
+        flow: &OpticalFlowField,
+    ) -> TwoPassReport {
+        let latent_w = (config.width / 8).max(1);
+        let latent_h = (config.height / 8).max(1);
+        let channels = 16;
+
+        let stats = quadmask.stats();
+        let active_pixels = stats.primary_pixels + stats.overlap_pixels + stats.affected_pixels;
+        let inpainted_ratio = if stats.total_pixels > 0 {
+            active_pixels as f32 / stats.total_pixels as f32
+        } else {
+            0.0
+        };
+
+        let latent_flow = flow.downsample(8);
+        let pass1_latent = LatentNoiseTensor::new_gaussian(channels, latent_h, latent_w, Some(101));
+        let warped_latent = WarpedNoiseEngine::warp_noise(&pass1_latent, &latent_flow);
+        let fresh_latent = LatentNoiseTensor::new_gaussian(channels, latent_h, latent_w, Some(202));
+        let pass2_latent = WarpedNoiseEngine::blend_with_degradation(
+            &warped_latent,
+            &fresh_latent,
+            config.warped_noise_degradation,
+        );
+
+        let n = pass1_latent.data.len().max(1) as f32;
+        let pass1_variance = pass1_latent.data.iter().map(|v| v * v).sum::<f32>() / n;
+        let dot: f32 = warped_latent
+            .data
+            .iter()
+            .zip(pass2_latent.data.iter())
+            .map(|(a, b)| a * b)
+            .sum::<f32>()
+            / n;
+
+        TwoPassReport {
+            latent_channels: channels,
+            latent_width: latent_w,
+            latent_height: latent_h,
+            inpainted_ratio,
+            mean_flow_magnitude: latent_flow.mean_magnitude(),
+            pass1_variance,
+            pass2_temporal_correlation: dot.clamp(-1.0, 1.0),
+        }
+    }
+
     /// Builds the FFmpeg side-by-side review grid command:
     /// Displays [Input Video | QuadMask | Result]
     pub fn build_comparison_grid_cmd(

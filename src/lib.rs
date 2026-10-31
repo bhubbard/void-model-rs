@@ -15,7 +15,7 @@ pub use mask::{
     AFFECTED_OBJECT, BACKGROUND, OVERLAP, PRIMARY_OBJECT,
 };
 pub use physics::{PhysicsConfig, PhysicsDynamics, PhysicsScenario, TrajectoryPoint};
-pub use pipeline::{InpaintConfig, InpaintPipeline};
+pub use pipeline::{InpaintConfig, InpaintPipeline, TwoPassReport};
 pub use vlm::{
     ContactRelation, InteractionType, SceneEntity, SceneInteractionGraph, VlmObjectAnalysis,
     VlmReasoner, VlmSceneAnalysis,

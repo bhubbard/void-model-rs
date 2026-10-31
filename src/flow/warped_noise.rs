@@ -114,11 +114,61 @@ impl WarpedNoiseEngine {
         let weight_warped = (1.0 - lambda * lambda).max(0.0).sqrt();
 
         let mut out = warped.clone();
-        for i in 0..out.data.len() {
-            out.data[i] = weight_warped * warped.data[i] + lambda * fresh.data[i];
+        for ((o, &w), &f) in out
+            .data
+            .iter_mut()
+            .zip(warped.data.iter())
+            .zip(fresh.data.iter())
+        {
+            *o = weight_warped * w + lambda * f;
         }
 
         out
+    }
+
+    /// Emits the WGPU WGSL compute shader for subpixel bilinear latent noise advection
+    /// and variance-preserving degradation blending (`sqrt(1 - lambda^2) * z_warp + lambda * z_fresh`).
+    pub fn wgsl_warp_shader() -> &'static str {
+        r#"@group(0) @binding(0) var<storage, read> prev_latent: array<f32>;
+@group(0) @binding(1) var<storage, read> fresh_latent: array<f32>;
+@group(0) @binding(2) var<storage, read> flow_uv: array<vec2<f32>>;
+@group(0) @binding(3) var<storage, read_write> out_latent: array<f32>;
+
+struct Params {
+    channels: u32,
+    height: u32,
+    width: u32,
+    lambda: f32,
+};
+@group(0) @binding(4) var<uniform> params: Params;
+
+@compute @workgroup_size(8, 8, 1)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let x = gid.x;
+    let y = gid.y;
+    if (x >= params.width || y >= params.height) { return; }
+    let uv = flow_uv[y * params.width + x];
+    let sx = clamp(f32(x) - uv.x, 0.0, f32(params.width - 1u));
+    let sy = clamp(f32(y) - uv.y, 0.0, f32(params.height - 1u));
+    let x0 = u32(floor(sx));
+    let y0 = u32(floor(sy));
+    let x1 = min(x0 + 1u, params.width - 1u);
+    let y1 = min(y0 + 1u, params.height - 1u);
+    let dx = sx - f32(x0);
+    let dy = sy - f32(y0);
+    let w_warp = sqrt(max(1.0 - params.lambda * params.lambda, 0.0));
+    let plane = params.height * params.width;
+    for (var c: u32 = 0u; c < params.channels; c = c + 1u) {
+        let base = c * plane;
+        let s00 = prev_latent[base + y0 * params.width + x0];
+        let s10 = prev_latent[base + y0 * params.width + x1];
+        let s01 = prev_latent[base + y1 * params.width + x0];
+        let s11 = prev_latent[base + y1 * params.width + x1];
+        let warped = (1.0 - dx) * (1.0 - dy) * s00 + dx * (1.0 - dy) * s10 + (1.0 - dx) * dy * s01 + dx * dy * s11;
+        let idx = base + y * params.width + x;
+        out_latent[idx] = w_warp * warped + params.lambda * fresh_latent[idx];
+    }
+}"#
     }
 }
 

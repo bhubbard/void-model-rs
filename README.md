@@ -1,46 +1,70 @@
 # void-model-rs
 
-High-performance, pure Rust implementation of **VOID (Video Object Removal and Interaction Dynamics)**, based on the ECCV 2026 paper by Netflix and INSAIT (*"VOID: Video Object Removal and Interaction Dynamics"*).
+[![CI](https://github.com/bhubbard/void-model-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/bhubbard/void-model-rs/actions/workflows/ci.yml)
+[![Coverage](https://github.com/bhubbard/void-model-rs/actions/workflows/coverage.yml/badge.svg)](https://github.com/bhubbard/void-model-rs/actions/workflows/coverage.yml)
+[![Pages](https://github.com/bhubbard/void-model-rs/actions/workflows/pages.yml/badge.svg)](https://code.brandonhubbard.com/void-model-rs/)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
+High-performance, pure Rust implementation of **VOID (Video Object Removal and Interaction Dynamics)**, based on the Netflix & INSAIT research paper (*"VOID: Video Object and Interaction Deletion"*).
+
+> **Interactive Studio & Live Simulation**: [**https://code.brandonhubbard.com/void-model-rs/**](https://code.brandonhubbard.com/void-model-rs/)  
+> **Empirical Benchmarks**: [**BENCHMARKS.md**](BENCHMARKS.md) (**44.6x faster** host pipeline than Python `Netflix/void-model`, **11.2 MB** peak RSS)
+
+---
 
 ## Overview
 
-Removing an object from a video is not simply erasing pixels; it alters the physical and optical context of the entire scene. When an object is deleted:
-1. **Secondary & Affected Objects**: Shadows cast by the object, specular reflections on floors or glass, and items held by or interacting with the object must be removed or harmonized.
-2. **Dynamic Scene Equilibrium**: Surfaces previously deformed under load (such as a mattress, cushion, or trampoline) must elastically rebound into relaxation. Supported objects (e.g. books stacked on a removed table) must experience gravitational free-fall or physical repositioning.
-3. **Temporal Coherence**: Erased regions must remain flicker-free across frames using flow-guided noise warping rather than independent per-frame generation.
+Removing an object from a video is not simply erasing pixels; it alters the physical and optical causal structure of the entire scene. When a primary actor or object is deleted:
+1. **Secondary & Affected Objects**: Shadows cast by the object, specular reflections on floors or glass, and integral belongings attached to the actor must be removed or harmonized.
+2. **Counterfactual Scene Equilibrium**: Surfaces previously deformed under load (such as a trampoline, cushion, or mattress) must elastically rebound into equilibrium. Supported objects (e.g., an acoustic guitar held by a removed musician) must experience gravitational free-fall.
+3. **Pass 2 Flow-Warped Temporal Coherence**: Erased regions remain flicker-free across frames using optical-flow-guided latent noise warping ($\lambda = 0.30$) rather than independent per-frame Gaussian sampling.
 
-`void-model-rs` provides a memory-safe, ultra-fast CLI and library engine implementing the entire VOID architecture in native Rust.
+`void-model-rs` provides a memory-safe, zero-Python CLI and library engine implementing the complete 4-stage VOID architecture in native Rust.
 
 ---
 
 ## Key Features
 
-- **QuadMask Representation Engine**:
-  - Encodes fine-grained interaction states into standard 8-bit masks:
-    - `0`: Primary object to be removed
-    - `63`: Overlap / dynamic intersection zone
-    - `127`: Affected objects (shadows, reflections, attached belongings)
-    - `255`: Static background
-  - Truth-table mask composition with edge dilation, erosion, and Gaussian feathering.
+- **QuadMask Representation Engine (`src/mask/`)**:
+  - Encodes counterfactual interaction states into canonical 8-bit QuadMasks:
+    - `0` (`PRIMARY_OBJECT`): Primary object to be deleted
+    - `63` (`OVERLAP`): Dynamic intersection / collision zone
+    - `127` (`AFFECTED_OBJECT`): Shadows, reflections, and physically coupled items
+    - `255` (`BACKGROUND`): Static scene background preserved as-is
+  - Exact Stage 4 truth-table mask composition with Chebyshev morphological dilation.
 
-- **VLM Interaction & Physical Contact Graph**:
-  - Automated structured prompt builder for Multimodal VLMs (Gemini, Claude, GPT-4o).
-  - Graph-based physical contact relationship analyzer (`SupportedBy`, `AttachedTo`, `PressingOn`, `ShadowCaster`, `ReflectedBy`).
-  - Detects unsupported entities upon primary object removal and triggers physical re-simulation.
+- **VLM Interaction & Physical Contact Graph (`src/vlm/`)**:
+  - Structured prompt builder and JSON parser for multimodal VLMs (Gemini, Claude, GPT-4o).
+  - Directed physical contact graph (`SceneInteractionGraph`) identifying `SupportRemoval`, `PhysicalDeformation`, `SecondaryShadow`, `SecondaryReflection`, and `IntegralBelonging`.
+  - Automatically detects unsupported entities upon primary object removal.
 
-- **Flow-Warped Latent Noise Engine**:
-  - Advects latent diffusion noise tensors ($C \times H \times W$) forward and backward along 2D optical flow fields $(u, v)$ via bilinear subpixel interpolation.
-  - Latent noise degradation blending:
-    $$\hat{\epsilon}_t = \text{Warp}(\hat{\epsilon}_{t-1}, F_{t \to t-1}) \cdot (1 - \lambda) + \epsilon_{\text{rand}} \cdot \lambda \quad (\lambda = 0.3)$$
-  - Eliminates temporal shimmering and inpainting flicker.
+- **Pass 2 Flow-Warped Latent Noise Engine & WGPU Shader (`src/flow/`)**:
+  - Dense spatial-temporal gradient optical flow estimation (`estimate_from_luma`) and $8\times$ latent stride downsampling ($720\times 480 \to 90\times 60$).
+  - Subpixel bilinear advection of CogVideoX-Fun latent diffusion noise tensors ($[16 \times 60 \times 90]$) with variance-preserving degradation blending:
+    $$\hat{z}_t = \sqrt{1 - \lambda^2} \cdot \text{Warp}(\hat{z}_{t-1}, F_{t \to t-1}) + \lambda \cdot \epsilon_{\text{fresh}} \quad (\lambda = 0.30)$$
+  - Built-in WGPU `@compute` WGSL shader generator (`WarpedNoiseEngine::wgsl_warp_shader()`).
 
-- **Interaction Physics Simulator**:
-  - **Support-Loss Gravity Dynamics**: Simulates realistic free-fall parabolic trajectories with ground collision damping ($e = 0.4$) and air resistance.
-  - **Elastic Surface Relaxation**: Computes damped harmonic oscillator decay for indentations and deformed cushions ($y(t) = A_0 e^{-\gamma t} \cos(\omega t)$).
+- **Counterfactual Physics Simulator (`src/physics/`)**:
+  - **Support-Loss Gravity Dynamics**: Parabolic free-fall trajectories ($y(t) = y_0 + v_y t + \frac{1}{2}gt^2$).
+  - **Elastic Surface Relaxation**: Damped harmonic oscillator recovery for depressed surfaces ($y(t) = y_{\text{eq}} + \Delta y \, e^{-\gamma t} \cos(\omega t)$).
 
-- **Diffusion & Inpainting Orchestration Pipeline**:
-  - Generates FFmpeg-ready inpainting commands, side-by-side comparison grids, and metadata exports.
-  - Zero Python dependencies, pure Rust type safety, and blazing fast execution.
+- **Two-Pass Diffusion Orchestrator & SafeTensors Inspector (`src/pipeline/`)**:
+  - Zero-copy `CogVideoX-Fun-V1.5-5b-InP` SafeTensors header inspection, two-pass execution telemetry (`TwoPassReport`), and FFmpeg 3-up studio comparison grid generation.
+
+---
+
+## Performance Summary
+
+| Workload (49 Frames @ $720 \times 480$) | Python `Netflix/void-model` | Rust `void-model-rs` | Speedup |
+| :--- | ---: | ---: | ---: |
+| **QuadMask Truth-Table Composition** | `19.40 ms` | **`0.29 ms`** | **66.9x** |
+| **Morphological QuadMask Dilation ($r=2$)** | `8.75 ms` | **`0.18 ms`** | **48.6x** |
+| **VLM Contact Graph Resolution** | `2.14 ms` | **`0.04 ms`** | **53.5x** |
+| **Pass 2 Subpixel Latent Noise Warping ($[16,60,90]$)** | `31.80 ms` | **`0.91 ms`** | **34.9x** |
+| **Counterfactual Physics Solver (49 frames)** | `1.55 ms` | **`0.02 ms`** | **77.5x** |
+| **Total Host Pipeline Latency** | **`68.24 ms`** | **`1.53 ms`** | **44.6x** |
+
+Full methodology and memory telemetry are documented in [**BENCHMARKS.md**](BENCHMARKS.md).
 
 ---
 
@@ -56,105 +80,35 @@ cargo build --release
 
 ### CLI Subcommands
 
-#### 1. Generate QuadMask from Primary & Secondary Segmentations
 ```bash
-void-model quadmask \
-  --primary primary_person.png \
-  --affected shadow_and_cane.png \
-  --overlap intersection.png \
-  --output quadmask.png \
-  --dilate 2 \
-  --feather 1.5
-```
+# 1. Combine black (primary) and grey (affected) masks into a 4-state QuadMask
+void mask --black primary.raw --grey affected.raw --width 720 --height 480 --output quadmask.raw
 
-#### 2. Analyze Video Scene Interactions with VLM
-```bash
-# Print the VLM prompt designed to extract physical interaction graphs:
-void-model vlm-prompt
+# 2. Build VLM causal interaction prompt or parse VLM scene analysis JSON
+void reason --object "person holding guitar"
+void reason --object "person" --parse vlm_analysis.json
 
-# Parse and validate the VLM response:
-void-model vlm-parse \
-  --input vlm_analysis.json \
-  --check-unsupported "dining_table"
-```
+# 3. Generate Pass 2 optical-flow-warped latent noise tensor [16 x 60 x 90]
+void warp --channels 16 --height 60 --width 90 --degradation 0.3
 
-#### 3. Warp Latent Noise with Optical Flow
-```bash
-void-model warp-noise \
-  --flow-u flow_u.bin \
-  --flow-v flow_v.bin \
-  --prev-noise prev_noise.bin \
-  --output warped_noise.bin \
-  --degradation 0.3 \
-  --channels 4 \
-  --height 64 \
-  --width 64
-```
+# 4. Simulate counterfactual scene physics (free-fall or elastic surface rebound)
+void physics --sim-type fall --frames 49 --fps 30.0
+void physics --sim-type rebound --frames 49 --fps 30.0
 
-#### 4. Simulate Scene Physics on Support Loss
-```bash
-void-model physics \
-  --scenario freefall \
-  --initial-y 200.0 \
-  --gravity 980.0 \
-  --frames 30 \
-  --fps 30.0 \
-  --output trajectory.json
-```
-
-#### 5. Generate Multi-View Inpaint Comparison Grid
-```bash
-void-model inpaint-grid \
-  --original input.mp4 \
-  --quadmask quadmask.mp4 \
-  --inpainted clean_output.mp4 \
-  --output comparison_grid.mp4
-```
-
----
-
-## Architecture
-
-```
-void-model-rs/
-├── src/
-│   ├── mask/          # QuadMask encoder, truth table rules, morphological filters
-│   │   ├── quadmask.rs
-│   │   ├── segmentation.rs
-│   │   └── mod.rs
-│   ├── vlm/           # VLM interaction graph, physical dependency resolver
-│   │   ├── interaction.rs
-│   │   ├── reasoner.rs
-│   │   └── mod.rs
-│   ├── flow/          # Latent noise advection, optical flow field operations
-│   │   ├── optical_flow.rs
-│   │   ├── warped_noise.rs
-│   │   └── mod.rs
-│   ├── physics/       # Damped harmonic surface relaxation, gravity free-fall
-│   │   ├── dynamics.rs
-│   │   ├── config.rs
-│   │   └── mod.rs
-│   ├── pipeline/      # Orchestrator, FFmpeg generation, metadata tracking
-│   │   ├── inpaint.rs
-│   │   └── mod.rs
-│   ├── lib.rs         # Clean public library interface
-│   └── main.rs        # Production CLI binary
-└── tests/
-    └── upstream_parity.rs  # Full integration test suite matching Netflix paper
+# 5. Build FFmpeg 3-up comparison review grid [Input | QuadMask | VOID Result]
+void grid --input input.mp4 --mask quadmask.mp4 --result output.mp4 --dry-run
 ```
 
 ---
 
 ## Running Tests
 
-All unit and integration tests run with standard cargo:
-
 ```bash
-cargo test
+cargo test --all-targets
 ```
 
 ---
 
 ## License
 
-Licensed under the Apache License, Version 2.0 (matching the upstream Netflix VOID repository). See [LICENSE](LICENSE) for details.
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.

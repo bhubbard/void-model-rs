@@ -116,6 +116,42 @@ impl QuadMaskFrame {
             total_pixels: self.data.len(),
         }
     }
+
+    /// Dilate non-background mask regions (`PRIMARY_OBJECT`, `OVERLAP`, `AFFECTED_OBJECT`)
+    /// by `radius` pixels using Chebyshev (box) neighborhood priority.
+    pub fn dilate(&self, radius: usize) -> Self {
+        if radius == 0 || self.width == 0 || self.height == 0 {
+            return self.clone();
+        }
+        let mut out = self.clone();
+        let r = radius as isize;
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let mut min_val = self.get_pixel(x, y);
+                if min_val == PRIMARY_OBJECT {
+                    continue;
+                }
+                for dy in -r..=r {
+                    for dx in -r..=r {
+                        let nx = x as isize + dx;
+                        let ny = y as isize + dy;
+                        if nx >= 0
+                            && (nx as usize) < self.width
+                            && ny >= 0
+                            && (ny as usize) < self.height
+                        {
+                            let neighbor = self.get_pixel(nx as usize, ny as usize);
+                            if neighbor < min_val {
+                                min_val = neighbor;
+                            }
+                        }
+                    }
+                }
+                out.set_pixel(x, y, min_val);
+            }
+        }
+        out
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

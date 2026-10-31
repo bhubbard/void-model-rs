@@ -200,3 +200,34 @@ fn test_upstream_inpaint_pipeline_grid() {
         .iter()
         .any(|c| c.contains("[0:v][1:v][2:v]hstack=inputs=3[grid]")));
 }
+
+#[test]
+fn test_upstream_quadmask_dilation_and_wgpu_shader() {
+    let mut frame = QuadMaskFrame::new(5, 5, BACKGROUND);
+    frame.set_pixel(2, 2, PRIMARY_OBJECT);
+    let dilated = frame.dilate(1);
+    assert_eq!(dilated.stats().primary_pixels, 9);
+
+    let wgsl = WarpedNoiseEngine::wgsl_warp_shader();
+    assert!(wgsl.contains("@compute @workgroup_size(8, 8, 1)"));
+    assert!(wgsl.contains("flow_uv"));
+}
+
+#[test]
+fn test_upstream_two_pass_and_safetensors_header() {
+    let cfg = void_model::InpaintConfig::default();
+    let mut mask = QuadMaskFrame::new(720, 480, BACKGROUND);
+    mask.set_pixel(10, 10, PRIMARY_OBJECT);
+    let flow = OpticalFlowField::new(720, 480);
+    let report = InpaintPipeline::execute_two_pass(&cfg, &mask, &flow);
+    assert_eq!(report.latent_channels, 16);
+    assert_eq!(report.latent_width, 90);
+    assert_eq!(report.latent_height, 60);
+    assert!(report.pass2_temporal_correlation > 0.8);
+
+    let header_json = br#"{"__metadata__":{"format":"pt","model":"CogVideoX-Fun-V1.5-5b-InP"}}"#;
+    let mut buf = (header_json.len() as u64).to_le_bytes().to_vec();
+    buf.extend_from_slice(header_json);
+    let meta = InpaintPipeline::inspect_safetensors_header(&buf).unwrap();
+    assert_eq!(meta["__metadata__"]["model"], "CogVideoX-Fun-V1.5-5b-InP");
+}
